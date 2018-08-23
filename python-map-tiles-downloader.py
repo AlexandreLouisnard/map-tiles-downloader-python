@@ -14,13 +14,58 @@ import math
 import urllib2
 from PIL import Image
 
+#############################################################################################################################################
 # Constants
-API_KEY = "XXXXXXXXXXXXXXXXXX"
+#############################################################################################################################################
+API_KEY = ""
 REFERER = "Firefox"
 LAYER = "GEOGRAPHICALGRIDSYSTEMS.MAPS"
 # 1:25000 zoom level
 ZOOM="15"
+# Scale Denominator for ZOOM=15
+SCALE_DENOMINATOR = 17061.8366707982724577
+# The standardized rendering pixel size is defined to be 0.28mm x 0.28mm.
+RENDERING_PIXEL_SIZE = 0.00028                       		# meters / rendering pixel ???
+METERS_PER_PIXEL = RENDERING_PIXEL_SIZE * SCALE_DENOMINATOR  		# meters / pixel
+TILE_SIZE_PX = 256                                		# pixels
+TILE_SIZE_METERS = TILE_SIZE_PX * METERS_PER_PIXEL               	# meters
+# 1° of latitude or longitude is equivalent to 111 km
+METERS_PER_DEGREE = 111000.0
+# 1:25000 means 250 m in reality for 1 cm on the paper
+METERS_PER_PAPER_CM = 250
 
+#############################################################################################################################################
+# Variables declaration
+#############################################################################################################################################
+# Required by user
+# Longitude/columns/width
+required_lon_start = 0
+required_lon_end = 0
+required_width_m = 0
+required_paper_width_cm = 0
+#Latitude/rows/height
+required_lat_start = 0
+required_lat_end = 0
+required_height_m = 0
+required_paper_height_cm = 0
+
+# Effective after rounding up to the required tiles
+# Longitude/columns/width
+effective_col_start = 0
+effective_col_end = 0
+effective_cols_count = 0
+effective_width_m = 0
+effective_paper_width_cm = 0
+#Latitude/rows/height
+effective_row_start = 0
+effective_row_end = 0
+effective_rows_count = 0
+effective_height_m = 0
+effective_paper_height_cm = 0
+
+#############################################################################################################################################
+# Variables initialization
+#############################################################################################################################################
 # Get arguments
 parser=argparse.ArgumentParser(prog="Geoportail 1:25000 Downloader", description="Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat (in decimal degrees) and with the specified expected size (in decimal cm) on paper.")
 parser.add_argument('--lon', type=float, required=True, help='(required) The map center longitude, in decimal degrees')
@@ -33,69 +78,75 @@ parser.add_argument('--toLon', type=float, help='(optional) If specified, the ma
 parser.add_argument('--toLat', type=float, help='(optional) If specified, the map will go from --lat to --toLat. --height will be ignored.')
 args=parser.parse_args()
 
+# Required longitudes defined by from-to values
 if args.toLon:
-	lon_start = args.lon
-	lon_end = args.toLon
-	height_km = (lon_end - lon_start) * 111
-	paper_height = height_km / 25000.0 * 100000.0
+	required_lon_start = min(args.lon, args.toLon)
+	required_lon_end = max(args.lon, args.toLon)
+	required_width_m = (required_lon_end - required_lon_start) * METERS_PER_DEGREE
+	required_paper_width_cm = required_width_m / METERS_PER_PAPER_CM
+# Required longitudes defined by center-width values
 else:
-	# 1° of latitude or longitude is equivalent to 111 km
-	paper_width = args.width
-	width_km = paper_width * 25000.0 / 100000.0
-	lon_start = args.lon - (width_km / 111.0) / 2.0
-	lon_end = args.lon + (width_km / 111.0) / 2.0
+	required_paper_width_cm = args.width
+	required_width_m = required_paper_width_cm * METERS_PER_PAPER_CM
+	required_lon_start = args.lon - (required_width_m / METERS_PER_DEGREE) / 2.0
+	required_lon_end = args.lon + (required_width_m / METERS_PER_DEGREE) / 2.0
+# Required latitudes defined by from-to values
 if args.toLat:
-	lat_start = args.lat
-	lat_end = args.toLat
-	width_km = (lat_end - lat_start) * 111
-	paper_width = width_km / 25000.0 * 100000.0
+	required_lat_start = min(args.lat, args.toLat)
+	required_lat_end = max(args.lat, args.toLat)
+	required_height_m = (required_lat_end - required_lat_start) * METERS_PER_DEGREE
+	required_paper_height_cm = required_height_m / METERS_PER_PAPER_CM
+# Required latitudes defined by center-width values
 else:
-	paper_height = args.height
-	height_km = paper_height * 25000.0 / 100000.0
-	lat_start = args.lat - (height_km / 111.0) / 2.0
-	lat_end = args.lat + (height_km / 111.0) / 2.0
+	required_paper_height_cm = args.height
+	required_height_m = required_paper_height_cm * METERS_PER_PAPER_CM
+	required_lat_start = args.lat - (required_height_m / METERS_PER_DEGREE) / 2.0
+	required_lat_end = args.lat + (required_height_m / METERS_PER_DEGREE) / 2.0
 
-print "from longitude\t{:>12} to {:<12} for a paper map width {:.2f} cm ({:.2f} km, {} degrees)".format(lon_start, lon_end, paper_width, width_km, lon_end-lon_start)
-print "from latitude\t{:>12} to {:<12} for a paper map height {:.2f} cm ({:.2f} km, {} degrees)".format(lat_start, lat_end, paper_height, height_km, lat_end-lat_start)
+print "Asked to download:"
+print " longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_width_m / METERS_PER_PIXEL, required_width_m, required_lon_end-required_lon_start)
+print " latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_height_m / METERS_PER_PIXEL, required_height_m, required_lat_end-required_lat_start)
 
+#############################################################################################################################################
+# main()
+#############################################################################################################################################
 def main():
 	# Convert (lon,lat) to (x,y) web-mercator coordinates in meters 
-	(x_start, y_start) = lonlat2xy(lon_start,lat_start)
-	(x_end, y_end) = lonlat2xy(lon_end,lat_end)
+	(x_start, y_start) = lonlat2xy(required_lon_start,required_lat_start)
+	(x_end, y_end) = lonlat2xy(required_lon_end,required_lat_end)
 
 	(xx_start, yy_start) = shiftXY(x_start, y_start)
 	(xx_end, yy_end) = shiftXY(x_end, y_end)
 
-	# Scale Denominator for ZOOM=15
-	scale_denominator = 17061.8366707982724577   # scale 1:scale_denominator
+	effective_col_start = int(xx_start / TILE_SIZE_METERS)
+	effective_col_end = int(xx_end / TILE_SIZE_METERS)
+	effective_row_start = int(yy_start / TILE_SIZE_METERS)
+	effective_row_end = int(yy_end / TILE_SIZE_METERS)
 
-	# The standardized rendering pixel size is defined to be 0.28mm x 0.28mm.
-	rendering_pixel_size = 0.00028                       		# meters / rendering pixel ???
-	pixel_size = rendering_pixel_size * scale_denominator  		# meters / pixel
-	tile_width_height = 256                                		# pixels
-	tile_size = tile_width_height * pixel_size               	# meters
-
-	col_start = int(xx_start / tile_size)
-	col_end = int(xx_end / tile_size)
-	row_start = int(yy_start / tile_size)
-	row_end = int(yy_end / tile_size)
-
-	if (col_start > col_end):
-		tmp = col_end
-		col_end = col_start
-		col_start = tmp
+	if (effective_col_start > effective_col_end):
+		tmp = effective_col_end
+		effective_col_end = effective_col_start
+		effective_col_start = tmp
 		
-	if (row_start > row_end):
-		tmp = row_end
-		row_end = row_start
-		row_start = tmp
+	if (effective_row_start > effective_row_end):
+		tmp = effective_row_end
+		effective_row_end = effective_row_start
+		effective_row_start = tmp
+		
+	effective_cols_count = effective_col_end - effective_col_start + 1
+	effective_rows_count = effective_row_end - effective_row_start + 1
+	effective_width_m = effective_cols_count * TILE_SIZE_METERS
+	effective_height_m = effective_rows_count * TILE_SIZE_METERS
+	effective_paper_width_cm = effective_cols_count * TILE_SIZE_METERS / METERS_PER_PAPER_CM
+	effective_paper_height_cm = effective_rows_count * TILE_SIZE_METERS / METERS_PER_PAPER_CM
 
-	print "from col\t{:>12} to {:<12} ({} cols)".format(col_start, col_end, col_end-col_start)
-	print "from row\t{:>12} to {:<12} ({} rows)".format(row_start, row_end, row_end-row_start)
+	print "\nActually downloading:"
+	print " {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_width_m, effective_width_m / METERS_PER_DEGREE)
+	print " {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_height_m, effective_height_m / METERS_PER_DEGREE)
 
 	# Download all tiles
-	for col in range (col_start, col_end + 1):
-		for row in range (row_start, row_end + 1):
+	for col in range (effective_col_start, effective_col_end + 1):
+		for row in range (effective_row_start, effective_row_end + 1):
 			COL = str(col)
 			ROW = str(row)
 
@@ -114,8 +165,8 @@ def main():
 	# Join all tiles
 	script_dir = os.path.dirname(os.path.abspath(__file__))
 	# For each row, join all columns horizontally
-	for row in range(row_start, row_end + 1):
-		cols = [os.path.join(script_dir, "zoom"+ZOOM+"-row"+str(row)+"-col"+str(col)+".jpeg") for col in range(col_start, col_end + 1)]
+	for row in range(effective_row_start, effective_row_end + 1):
+		cols = [os.path.join(script_dir, "zoom"+ZOOM+"-row"+str(row)+"-col"+str(col)+".jpeg") for col in range(effective_col_start, effective_col_end + 1)]
 		images = map(Image.open, cols)
 		widths, heights = zip(*(i.size for i in images))
 
@@ -130,9 +181,9 @@ def main():
 		  x_offset += im.size[0]
 
 		new_im.save("zoom"+ZOOM+"-row"+str(row)+".jpeg")
-		
+				
 	# Join all reconstituted rows vertically
-	rows = [os.path.join(script_dir, "zoom"+ZOOM+"-row"+str(row)+".jpeg") for row in range(row_start, row_end + 1)]
+	rows = [os.path.join(script_dir, "zoom"+ZOOM+"-row"+str(row)+".jpeg") for row in range(effective_row_start, effective_row_end + 1)]
 	images = map(Image.open, rows)
 	widths, heights = zip(*(i.size for i in images))
 
@@ -143,10 +194,17 @@ def main():
 
 	y_offset = 0
 	for im in images:
-	  new_im.paste(im, (0,y_offset))
-	  y_offset += im.size[1]
+		new_im.paste(im, (0,y_offset))
+		y_offset += im.size[1]
+		
+	new_im.save("IGN-zoom"+ZOOM+".jpeg")
+	
+	# Clean up tiles
+	for row in range(effective_row_start, effective_row_end + 1):
+		os.remove("zoom"+ZOOM+"-row"+str(row)+".jpeg")
+		for col in range(effective_col_start, effective_col_end + 1):
+			os.remove("zoom"+ZOOM+"-row"+str(row)+"-col"+str(col)+".jpeg")
 
-	new_im.save("zoom"+ZOOM+".jpeg")
 
 
 
@@ -175,9 +233,9 @@ def lonlat2xy(lon_deg, lat_deg):
 # Shift coordinates according to the "Top Left Corner"
 def shiftXY(x, y):
 	# Top Left Corner for ZOOM=15
-	x0 = -20037508 
-	y0 = 20037508
-	return (x-x0, y0-y)
+	X0 = -20037508 
+	Y0 = 20037508
+	return (x-X0, Y0-y)
 
 
 if __name__ == '__main__':
