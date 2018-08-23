@@ -22,17 +22,15 @@ REFERER = "Firefox"
 LAYER = "GEOGRAPHICALGRIDSYSTEMS.MAPS"
 # 1:25000 zoom level
 ZOOM="15"
-# Scale Denominator for ZOOM=15
-SCALE_DENOMINATOR = 17061.8366707982724577
+# Scale Denominator for ZOOM=15 (not exactly 1:25000 but close)
+SCALE_TERRAIN_M_PER_PAPER_M = 17061.8366707982724577							# terrain meters / paper meters
 # The standardized rendering pixel size is defined to be 0.28mm x 0.28mm.
-RENDERING_PIXEL_SIZE = 0.00028                       		# meters / rendering pixel ???
-METERS_PER_PIXEL = RENDERING_PIXEL_SIZE * SCALE_DENOMINATOR  		# meters / pixel
-TILE_SIZE_PX = 256                                		# pixels
-TILE_SIZE_METERS = TILE_SIZE_PX * METERS_PER_PIXEL               	# meters
+PAPER_METERS_PER_PIXEL = 0.00028												# paper meters / pixel
+TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * SCALE_TERRAIN_M_PER_PAPER_M	# terrain meters / pixel
+TILE_SIZE_PX = 256                                								# pixels
+TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * TERRAIN_METERS_PER_PIXEL  			# terrain meters
 # 1° of latitude or longitude is equivalent to 111 km
-METERS_PER_DEGREE = 111000.0
-# 1:25000 means 250 m in reality for 1 cm on the paper
-METERS_PER_PAPER_CM = 250
+TERRAIN_METERS_PER_DEGREE = 111000.0											# terrain meters / degree
 
 #############################################################################################################################################
 # Variables declaration
@@ -82,30 +80,30 @@ args=parser.parse_args()
 if args.toLon:
 	required_lon_start = min(args.lon, args.toLon)
 	required_lon_end = max(args.lon, args.toLon)
-	required_width_m = (required_lon_end - required_lon_start) * METERS_PER_DEGREE
-	required_paper_width_cm = required_width_m / METERS_PER_PAPER_CM
+	required_width_m = (required_lon_end - required_lon_start) * TERRAIN_METERS_PER_DEGREE
+	required_paper_width_cm = required_width_m / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 # Required longitudes defined by center-width values
 else:
 	required_paper_width_cm = args.width
-	required_width_m = required_paper_width_cm * METERS_PER_PAPER_CM
-	required_lon_start = args.lon - (required_width_m / METERS_PER_DEGREE) / 2.0
-	required_lon_end = args.lon + (required_width_m / METERS_PER_DEGREE) / 2.0
+	required_width_m = required_paper_width_cm * (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_lon_start = args.lon - (required_width_m / TERRAIN_METERS_PER_DEGREE) / 2.0
+	required_lon_end = args.lon + (required_width_m / TERRAIN_METERS_PER_DEGREE) / 2.0
 # Required latitudes defined by from-to values
 if args.toLat:
 	required_lat_start = min(args.lat, args.toLat)
 	required_lat_end = max(args.lat, args.toLat)
-	required_height_m = (required_lat_end - required_lat_start) * METERS_PER_DEGREE
-	required_paper_height_cm = required_height_m / METERS_PER_PAPER_CM
+	required_height_m = (required_lat_end - required_lat_start) * TERRAIN_METERS_PER_DEGREE
+	required_paper_height_cm = required_height_m / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 # Required latitudes defined by center-width values
 else:
 	required_paper_height_cm = args.height
-	required_height_m = required_paper_height_cm * METERS_PER_PAPER_CM
-	required_lat_start = args.lat - (required_height_m / METERS_PER_DEGREE) / 2.0
-	required_lat_end = args.lat + (required_height_m / METERS_PER_DEGREE) / 2.0
+	required_height_m = required_paper_height_cm * (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_lat_start = args.lat - (required_height_m / TERRAIN_METERS_PER_DEGREE) / 2.0
+	required_lat_end = args.lat + (required_height_m / TERRAIN_METERS_PER_DEGREE) / 2.0
 
 print "Asked to download:"
-print " longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_width_m / METERS_PER_PIXEL, required_width_m, required_lon_end-required_lon_start)
-print " latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_height_m / METERS_PER_PIXEL, required_height_m, required_lat_end-required_lat_start)
+print " longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_width_m / TERRAIN_METERS_PER_PIXEL, required_width_m, required_lon_end-required_lon_start)
+print " latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_height_m / TERRAIN_METERS_PER_PIXEL, required_height_m, required_lat_end-required_lat_start)
 
 #############################################################################################################################################
 # main()
@@ -118,10 +116,10 @@ def main():
 	(xx_start, yy_start) = shiftXY(x_start, y_start)
 	(xx_end, yy_end) = shiftXY(x_end, y_end)
 
-	effective_col_start = int(xx_start / TILE_SIZE_METERS)
-	effective_col_end = int(xx_end / TILE_SIZE_METERS)
-	effective_row_start = int(yy_start / TILE_SIZE_METERS)
-	effective_row_end = int(yy_end / TILE_SIZE_METERS)
+	effective_col_start = int(xx_start / TILE_SIZE_TERRAIN_METERS)
+	effective_col_end = int(xx_end / TILE_SIZE_TERRAIN_METERS)
+	effective_row_start = int(yy_start / TILE_SIZE_TERRAIN_METERS)
+	effective_row_end = int(yy_end / TILE_SIZE_TERRAIN_METERS)
 
 	if (effective_col_start > effective_col_end):
 		tmp = effective_col_end
@@ -135,14 +133,14 @@ def main():
 		
 	effective_cols_count = effective_col_end - effective_col_start + 1
 	effective_rows_count = effective_row_end - effective_row_start + 1
-	effective_width_m = effective_cols_count * TILE_SIZE_METERS
-	effective_height_m = effective_rows_count * TILE_SIZE_METERS
-	effective_paper_width_cm = effective_cols_count * TILE_SIZE_METERS / METERS_PER_PAPER_CM
-	effective_paper_height_cm = effective_rows_count * TILE_SIZE_METERS / METERS_PER_PAPER_CM
+	effective_width_m = effective_cols_count * TILE_SIZE_TERRAIN_METERS
+	effective_height_m = effective_rows_count * TILE_SIZE_TERRAIN_METERS
+	effective_paper_width_cm = effective_cols_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	effective_paper_height_cm = effective_rows_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 
 	print "\nActually downloading:"
-	print " {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_width_m, effective_width_m / METERS_PER_DEGREE)
-	print " {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_height_m, effective_height_m / METERS_PER_DEGREE)
+	print " {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m = {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_width_m, effective_width_m / TERRAIN_METERS_PER_DEGREE)
+	print " {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m = {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_height_m, effective_height_m / TERRAIN_METERS_PER_DEGREE)
 
 	# Download all tiles
 	for col in range (effective_col_start, effective_col_end + 1):
