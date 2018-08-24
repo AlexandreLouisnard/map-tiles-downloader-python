@@ -3,9 +3,10 @@
 
 # Author Alexandre Louisnard
 
+# Python 2
+
 # Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat in decimal degrees and with the specified expected size on paper.
-# Usage: ./downloadTileTop25.py lon lat (in decimal degree)
-# Example (Chamechaude): ./downloadTileTop25.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
+# Example (Chamechaude): py -2 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
 
 import sys
 import argparse
@@ -22,12 +23,19 @@ from secret_data import * # Import from other file or define below
 #############################################################################################################################################
 # Constants
 #############################################################################################################################################
-# Geoportail constants
+# Common constants
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMP_DIR = "temp"
+# 1° of latitude or longitude is equivalent to 111 km
+TERRAIN_METERS_PER_DEGREE = 111000.0											# terrain meters / degree
+EARTH_EQUATORIAL_RADIUS_M = 6378137.0											# meters
+
+# 1:25000 Geoportail IGN map constants
 MAP_NAME = "IGN"
-REFERER = "Firefox"
 LAYER = "GEOGRAPHICALGRIDSYSTEMS.MAPS"
-# 1:25000 Geoportail zoom level
 ZOOM="15"
+GEOPORTAIL_URL = "http://wxs.ign.fr/"+API_KEY_GEOPORTAIL+"/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER="+LAYER+"&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX="+ZOOM+"&TILEROW=%(row)d&TILECOL=%(col)d&FORMAT=image/jpeg"
+REFERER = "Firefox"
 # Map scale denominator for ZOOM=15 (not exactly 1:25000 but close)
 SCALE_TERRAIN_M_PER_PAPER_M = 17061.8366707982724577							# terrain meters / paper meter
 # The standardized rendering pixel size is defined to be 0.28mm x 0.28mm.
@@ -35,14 +43,6 @@ PAPER_METERS_PER_PIXEL = 0.00028												# paper meters / pixel
 TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * SCALE_TERRAIN_M_PER_PAPER_M	# terrain meters / pixel
 TILE_SIZE_PX = 256                                								# pixels
 TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * TERRAIN_METERS_PER_PIXEL  			# terrain meters
-
-# Common constants
-# 1° of latitude or longitude is equivalent to 111 km
-TERRAIN_METERS_PER_DEGREE = 111000.0											# terrain meters / degree
-EARTH_EQUATORIAL_RADIUS_M = 6378137.0												# meters
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMP_DIR = "temp"
 
 #############################################################################################################################################
 # Variables declaration
@@ -132,7 +132,7 @@ def main():
 	if not os.path.exists(TEMP_DIR):
 		os.makedirs(TEMP_DIR)
 
-	# Convert (lon,lat) to (x,y) web-mercator coordinates in meters 
+	# Convert (lon,lat) to (x,y) web-mercator coordinates in meters
 	(x_start, y_start) = lon_lat_2_xy(required_lon_start,required_lat_start)
 	(x_end, y_end) = lon_lat_2_xy(required_lon_end,required_lat_end)
 
@@ -148,12 +148,12 @@ def main():
 		tmp = effective_col_end
 		effective_col_end = effective_col_start
 		effective_col_start = tmp
-		
+
 	if effective_row_start > effective_row_end:
 		tmp = effective_row_end
 		effective_row_end = effective_row_start
 		effective_row_start = tmp
-		
+
 	effective_cols_count = effective_col_end - effective_col_start + 1
 	effective_rows_count = effective_row_end - effective_row_start + 1
 	effective_terrain_width_m = effective_cols_count * TILE_SIZE_TERRAIN_METERS
@@ -171,18 +171,15 @@ def main():
 			# Check if tile already exists in cache
 			if not force_redownload and os.path.exists(tile_file(MAP_NAME, ZOOM, row, col)):
 				continue
-		
-			# Prepare URL and file
-			URL = "http://wxs.ign.fr/"+API_KEY_GEOPORTAIL+"/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER="+LAYER+"&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX="+ZOOM+"&TILEROW="+str(row)+"&TILECOL="+str(col)+"&FORMAT=image/jpeg"  
 
 			# Launch HTTP request and save output
-			req = urllib2.Request(URL)
+			req = urllib2.Request(GEOPORTAIL_URL % {"col": col, "row": row})
 			req.add_header('Referer', REFERER)
 			ans = urllib2.urlopen(req)
 			output = open(tile_file(MAP_NAME, ZOOM, row, col), 'wb')
 			output.write(ans.read())
 			output.close()
-		
+
 	# Join all tiles
 	# For each row, join all columns horizontally
 	for row in range(effective_row_start, effective_row_end + 1):
@@ -201,7 +198,7 @@ def main():
 		  x_offset += im.size[0]
 
 		new_im.save(merged_row_file(MAP_NAME, ZOOM, row, effective_col_start, effective_col_end))
-				
+
 	# Join all reconstituted rows vertically
 	rows = [os.path.join(SCRIPT_DIR, merged_row_file(MAP_NAME, ZOOM, row, effective_col_start, effective_col_end)) for row in range(effective_row_start, effective_row_end + 1)]
 	images = map(Image.open, rows)
@@ -216,9 +213,9 @@ def main():
 	for im in images:
 		new_im.paste(im, (0,y_offset))
 		y_offset += im.size[1]
-		
+
 	new_im.save(map_file(MAP_NAME, ZOOM, effective_row_start, effective_row_end, effective_col_start, effective_col_end))
-	
+
 	# Clean up cache
 	for row in range(effective_row_start, effective_row_end + 1):
 		os.remove(merged_row_file(MAP_NAME, ZOOM, row, effective_col_start, effective_col_end))
@@ -227,6 +224,9 @@ def main():
 
 
 
+#############################################################################################################################################
+# Methods
+#############################################################################################################################################
 
 ### Computes (col, row) from (lon, lat) for ZOOM=15
 # Documentation: http://api.ign.fr/tech-docs-js/fr/developpeur/wmts.html
@@ -252,18 +252,19 @@ def lon_lat_2_xy(lon_deg, lat_deg):
 # Shift coordinates according to the "Top Left Corner"
 def shift_xy(x, y):
 	# Top Left Corner for ZOOM=15
-	X0 = -20037508 
+	X0 = -20037508
 	Y0 = 20037508
 	return (x-X0, Y0-y)
-	
+
 def tile_file(map_name, zoom_level, row, col):
 	return os.path.join(SCRIPT_DIR, TEMP_DIR, MAP_NAME+"_zoom"+zoom_level+"_row"+str(row)+"_col"+str(col)+".jpeg")
-	
+
 def merged_row_file(map_name, zoom_level, row, fromCol, toCol):
 	return os.path.join(SCRIPT_DIR, TEMP_DIR, MAP_NAME+"_zoom"+zoom_level+"_row"+str(row)+"_cols"+str(fromCol)+"-"+str(toCol)+".jpeg")
 
 def map_file(map, zoom_level, fromRow, toRow, fromCol, toCol):
 	return os.path.join(SCRIPT_DIR, MAP_NAME+"_zoom"+zoom_level+"_rows"+str(fromRow)+"-"+str(toRow)+"_cols"+str(fromCol)+"-"+str(toCol)+".jpeg")
-	
+
+# Execute main()
 if __name__ == '__main__':
     main()

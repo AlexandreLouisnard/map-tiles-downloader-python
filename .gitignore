@@ -1,3 +1,4 @@
-temp/*
+/temp/*
 *.jpeg
 *.pyc
+/secret_data.py
