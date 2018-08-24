@@ -3,7 +3,7 @@
 
 # Author Alexandre Louisnard
 
-# Python 2
+# Python 3
 
 # Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat in decimal degrees and with the specified expected size on paper.
 # Example (Chamechaude): py -2 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
@@ -12,7 +12,7 @@ import sys
 import argparse
 import os
 import math
-import urllib2
+from urllib.request import Request, urlopen
 from PIL import Image
 #############################################################################################################################################
 # Secret data
@@ -120,9 +120,9 @@ else:
 	required_lat_end = args.lat + (required_terrain_height_m / TERRAIN_METERS_PER_DEGREE) / 2.0
 force_redownload = args.force
 
-print "Asked to download:"
-print " longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_terrain_width_m / TERRAIN_METERS_PER_PIXEL, required_terrain_width_m, required_lon_end-required_lon_start)
-print " latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_terrain_height_m / TERRAIN_METERS_PER_PIXEL, required_terrain_height_m, required_lat_end-required_lat_start)
+print("Asked to download:")
+print(" longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_terrain_width_m / TERRAIN_METERS_PER_PIXEL, required_terrain_width_m, required_lon_end-required_lon_start))
+print(" latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_terrain_height_m / TERRAIN_METERS_PER_PIXEL, required_terrain_height_m, required_lat_end-required_lat_start))
 
 #############################################################################################################################################
 # main()
@@ -161,9 +161,9 @@ def main():
 	effective_paper_width_cm = effective_cols_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 	effective_paper_height_cm = effective_rows_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 
-	print "\nActually downloading:"
-	print " {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_terrain_width_m, effective_terrain_width_m / TERRAIN_METERS_PER_DEGREE)
-	print " {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_terrain_height_m, effective_terrain_height_m / TERRAIN_METERS_PER_DEGREE)
+	print("\nActually downloading:")
+	print(" {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_terrain_width_m, effective_terrain_width_m / TERRAIN_METERS_PER_DEGREE))
+	print(" {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_terrain_height_m, effective_terrain_height_m / TERRAIN_METERS_PER_DEGREE))
 
 	# Download all tiles
 	for col in range (effective_col_start, effective_col_end + 1):
@@ -173,9 +173,9 @@ def main():
 				continue
 
 			# Launch HTTP request and save output
-			req = urllib2.Request(GEOPORTAIL_URL % {"col": col, "row": row})
+			req = Request(GEOPORTAIL_URL % {"col": col, "row": row})
 			req.add_header('Referer', REFERER)
-			ans = urllib2.urlopen(req)
+			ans = urlopen(req)
 			output = open(tile_file(MAP_NAME, ZOOM, row, col), 'wb')
 			output.write(ans.read())
 			output.close()
@@ -184,8 +184,8 @@ def main():
 	# For each row, join all columns horizontally
 	for row in range(effective_row_start, effective_row_end + 1):
 		cols = [os.path.join(SCRIPT_DIR, tile_file(MAP_NAME, ZOOM, row, col)) for col in range(effective_col_start, effective_col_end + 1)]
-		images = map(Image.open, cols)
-		widths, heights = zip(*(i.size for i in images))
+		images = list(map(Image.open, cols))
+		widths, heights = list(zip(*(i.size for i in images)))
 
 		total_width = sum(widths)
 		max_height = max(heights)
@@ -201,8 +201,8 @@ def main():
 
 	# Join all reconstituted rows vertically
 	rows = [os.path.join(SCRIPT_DIR, merged_row_file(MAP_NAME, ZOOM, row, effective_col_start, effective_col_end)) for row in range(effective_row_start, effective_row_end + 1)]
-	images = map(Image.open, rows)
-	widths, heights = zip(*(i.size for i in images))
+	images = list(map(Image.open, rows))
+	widths, heights = list(zip(*(i.size for i in images)))
 
 	max_width = max(widths)
 	total_height = sum(heights)

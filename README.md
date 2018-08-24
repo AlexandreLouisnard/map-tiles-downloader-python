@@ -1,7 +1,7 @@
 # Map tiles downloader
 
 **Author: Alexandre Louisnard alouisnard@gmail.com**  
-**Python 2 script**  
+**Python 3 script**  
 **2018**
 
 ## DESCRIPTION
