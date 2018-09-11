@@ -6,10 +6,11 @@
 # Python 3
 
 # Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat in decimal degrees and with the specified expected size on paper.
-# Example (Chamechaude): py -2 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
+# Example (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
 
 import sys
 import argparse
+from argparse import RawTextHelpFormatter
 import os
 import math
 from urllib.request import Request, urlopen
@@ -77,7 +78,7 @@ effective_terrain_height_m = 0
 # Variables initialization
 #############################################################################################################################################
 # Get arguments
-parser=argparse.ArgumentParser(prog="Geoportail 1:25000 Downloader", description="Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat (in decimal degrees) and with the specified expected size (in decimal cm) on paper.")
+parser=argparse.ArgumentParser(prog="Geoportail 1:25000 Downloader", description="Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat (in decimal degrees) and with the specified expected size (in decimal cm) on paper.\n\nExample (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7", formatter_class=RawTextHelpFormatter)
 required_named = parser.add_argument_group('required named arguments')
 optional_named = parser.add_argument_group('optional named arguments')
 
@@ -87,8 +88,8 @@ required_named.add_argument('--lat', type=float, required=True, help='(required)
 optional_named.add_argument('--width', type=float, help='(optional) The paper map width, in decimal cm (by default: 21 for A4 portrait format)', default=21)
 optional_named.add_argument('--height', type=float, help='(optional) The paper map height, in decimal cm (by default: 29.7 for A4 portrait format)', default=29.7)
 
-optional_named.add_argument('--toLon', type=float, help='(optional) If specified, the map will go from --lon to --toLon. --width will be ignored.')
-optional_named.add_argument('--toLat', type=float, help='(optional) If specified, the map will go from --lat to --toLat. --height will be ignored.')
+optional_named.add_argument('--toLon', type=float, help='(optional) If specified, the map will go from --lon to --toLon.\n--width will be ignored.')
+optional_named.add_argument('--toLat', type=float, help='(optional) If specified, the map will go from --lat to --toLat.\n--height will be ignored.')
 
 optional_named.add_argument('--force', action='store_true', help='(optional) Force re-downloading the map tiles even if they are already in cache')
 
