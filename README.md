@@ -12,13 +12,13 @@ Map coordinates and size are specified by:
 
 
 ## USAGE
->py -2 python_map_tiles_downloader.py  [-h] --lon LON --lat LAT  
+>py -3 python_map_tiles_downloader.py  [-h] --lon LON --lat LAT  
 >                                      [--width WIDTH] [--height HEIGHT]  
 >                                      [--toLon TOLON] [--toLat TOLAT]  
 >                                      [--force]  
 
 **Example:**  
->py -2 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
+>py -3 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
 
 **optional arguments:**
 * -h, --help       show this help message and exit
