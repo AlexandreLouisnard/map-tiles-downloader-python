@@ -6,7 +6,7 @@
 # Python 3
 
 # Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat in decimal degrees and with the specified expected size on paper.
-# Example (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7
+# Example (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.28787 --lon=5.78868 --width=21 --height=29.7
 
 import sys
 import argparse
@@ -27,23 +27,29 @@ from secret_data import * # Import from other file or define below
 # Common constants
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = "temp"
-# 1° of latitude or longitude is equivalent to 111 km
-TERRAIN_METERS_PER_DEGREE = 111000.0											# terrain meters / degree
-EARTH_EQUATORIAL_RADIUS_M = 6378137.0											# meters
+# 1° of latitude (or longitude at the Equator) is equivalent to 111 km
+# 1° of longitude is equivalent to (111 * cos(lat)) km
+TERRAIN_METERS_PER_LATITUDE_DEGREE = 111000.0	# terrain meters / degree
+EARTH_EQUATORIAL_RADIUS_M = 6378137.0			# meters
 
-# 1:25000 Geoportail IGN map constants
+# 1:25000 Geoportail IGN map & WMTS constants
 MAP_NAME = "IGN"
 LAYER = "GEOGRAPHICALGRIDSYSTEMS.MAPS"
 ZOOM="15"
 GEOPORTAIL_URL = "http://wxs.ign.fr/"+API_KEY_GEOPORTAIL+"/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER="+LAYER+"&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX="+ZOOM+"&TILEROW=%(row)d&TILECOL=%(col)d&FORMAT=image/jpeg"
 REFERER = "Firefox"
-# Map scale denominator for ZOOM=15 (not exactly 1:25000 but close)
-SCALE_TERRAIN_M_PER_PAPER_M = 17061.8366707982724577							# terrain meters / paper meter
-# The standardized rendering pixel size is defined to be 0.28mm x 0.28mm.
-PAPER_METERS_PER_PIXEL = 0.00028												# paper meters / pixel
-TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * SCALE_TERRAIN_M_PER_PAPER_M	# terrain meters / pixel
-TILE_SIZE_PX = 256                                								# pixels
-TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * TERRAIN_METERS_PER_PIXEL  			# terrain meters
+# WMTS standard tile size
+TILE_SIZE_PX = 256
+# Rendering scale denominator given by Geoportail with ZOOM=15
+RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M = 17061.8366707982724577 # terrain meters / paper meter
+# Approx longitude of the middle of France probably used by IGN to calculate its 1:25000 map rendering scale with 17061.83 = 25000 * cos(46.96)
+LON_MIDDLE_OF_FRANCE = 46.962767858006990591232517614197
+REAL_SCALE_TERRAIN_M_PER_PAPER_M = RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M / math.cos(math.radians(LON_MIDDLE_OF_FRANCE)) # =25000 terrain meters per paper meters (1:25000 map)
+# The WMTS standardized rendering pixel size is 0.28mm x 0.28mm
+PAPER_METERS_PER_PIXEL = 0.00028																				# paper meters / pixel.
+EQUATOR_TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M	# =4.777314267823516 terrain meters / pixel at Equator
+EQUATOR_TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * EQUATOR_TERRAIN_METERS_PER_PIXEL								# =1223 terrain meters per tile at Equator
+REAL_TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * EQUATOR_TERRAIN_METERS_PER_PIXEL * math.cos(math.radians(LON_MIDDLE_OF_FRANCE))	# =834.66 terrain meters per tile in France
 
 #############################################################################################################################################
 # Variables declaration
@@ -78,7 +84,7 @@ effective_terrain_height_m = 0
 # Variables initialization
 #############################################################################################################################################
 # Get arguments
-parser=argparse.ArgumentParser(prog="Geoportail 1:25000 Downloader", description="Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat (in decimal degrees) and with the specified expected size (in decimal cm) on paper.\n\nExample (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.2875374 --lon=5.7879211 --width=21 --height=29.7", formatter_class=RawTextHelpFormatter)
+parser=argparse.ArgumentParser(prog="Geoportail 1:25000 Downloader", description="Download maps from Geoportail at zoom level 15 (1:25000) centered on the specified lon/lat (in decimal degrees) and with the specified expected size (in decimal cm) on paper.\n\nExample (Chamechaude): py -3 python_map_tiles_downloader.py --lat=45.28787 --lon=5.78868 --width=21 --height=29.7", formatter_class=RawTextHelpFormatter)
 required_named = parser.add_argument_group('required named arguments')
 optional_named = parser.add_argument_group('optional named arguments')
 
@@ -95,35 +101,37 @@ optional_named.add_argument('--force', action='store_true', help='(optional) For
 
 args=parser.parse_args()
 
+terrain_meters_per_longitude_degree = TERRAIN_METERS_PER_LATITUDE_DEGREE * math.cos(math.radians(args.lat))
+
 # Required longitudes defined by from-to values
 if args.toLon:
 	required_lon_start = min(args.lon, args.toLon)
 	required_lon_end = max(args.lon, args.toLon)
-	required_terrain_width_m = (required_lon_end - required_lon_start) * TERRAIN_METERS_PER_DEGREE
-	required_paper_width_cm = required_terrain_width_m / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_terrain_width_m = (required_lon_end - required_lon_start) * terrain_meters_per_longitude_degree
+	required_paper_width_cm = required_terrain_width_m / (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 # Required longitudes defined by center-width values
 else:
 	required_paper_width_cm = args.width
-	required_terrain_width_m = required_paper_width_cm * (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
-	required_lon_start = args.lon - (required_terrain_width_m / TERRAIN_METERS_PER_DEGREE) / 2.0
-	required_lon_end = args.lon + (required_terrain_width_m / TERRAIN_METERS_PER_DEGREE) / 2.0
+	required_terrain_width_m = required_paper_width_cm * (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_lon_start = args.lon - (required_terrain_width_m / terrain_meters_per_longitude_degree) / 2.0
+	required_lon_end = args.lon + (required_terrain_width_m / terrain_meters_per_longitude_degree) / 2.0
 # Required latitudes defined by from-to values
 if args.toLat:
 	required_lat_start = min(args.lat, args.toLat)
 	required_lat_end = max(args.lat, args.toLat)
-	required_terrain_height_m = (required_lat_end - required_lat_start) * TERRAIN_METERS_PER_DEGREE
-	required_paper_height_cm = required_terrain_height_m / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_terrain_height_m = (required_lat_end - required_lat_start) * TERRAIN_METERS_PER_LATITUDE_DEGREE
+	required_paper_height_cm = required_terrain_height_m / (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 # Required latitudes defined by center-width values
 else:
 	required_paper_height_cm = args.height
-	required_terrain_height_m = required_paper_height_cm * (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
-	required_lat_start = args.lat - (required_terrain_height_m / TERRAIN_METERS_PER_DEGREE) / 2.0
-	required_lat_end = args.lat + (required_terrain_height_m / TERRAIN_METERS_PER_DEGREE) / 2.0
+	required_terrain_height_m = required_paper_height_cm * (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	required_lat_start = args.lat - (required_terrain_height_m / TERRAIN_METERS_PER_LATITUDE_DEGREE) / 2.0
+	required_lat_end = args.lat + (required_terrain_height_m / TERRAIN_METERS_PER_LATITUDE_DEGREE) / 2.0
 force_redownload = args.force
 
 print("Asked to download:")
-print(" longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_terrain_width_m / TERRAIN_METERS_PER_PIXEL, required_terrain_width_m, required_lon_end-required_lon_start))
-print(" latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_terrain_height_m / TERRAIN_METERS_PER_PIXEL, required_terrain_height_m, required_lat_end-required_lat_start))
+print(" longitude from {:>9.5f} to {:<10.5f} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(required_lon_start, required_lon_end, required_paper_width_cm, required_terrain_width_m / EQUATOR_TERRAIN_METERS_PER_PIXEL, required_terrain_width_m, required_lon_end-required_lon_start))
+print(" latitude  from {:>9.5f} to {:<10.5f} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(required_lat_start, required_lat_end, required_paper_height_cm, required_terrain_height_m / EQUATOR_TERRAIN_METERS_PER_PIXEL, required_terrain_height_m, required_lat_end-required_lat_start))
 
 #############################################################################################################################################
 # main()
@@ -136,14 +144,13 @@ def main():
 	# Convert (lon,lat) to (x,y) web-mercator coordinates in meters
 	(x_start, y_start) = lon_lat_2_xy(required_lon_start,required_lat_start)
 	(x_end, y_end) = lon_lat_2_xy(required_lon_end,required_lat_end)
-
 	(xx_start, yy_start) = shift_xy(x_start, y_start)
 	(xx_end, yy_end) = shift_xy(x_end, y_end)
 
-	effective_col_start = int(xx_start / TILE_SIZE_TERRAIN_METERS)
-	effective_col_end = int(xx_end / TILE_SIZE_TERRAIN_METERS)
-	effective_row_start = int(yy_start / TILE_SIZE_TERRAIN_METERS)
-	effective_row_end = int(yy_end / TILE_SIZE_TERRAIN_METERS)
+	effective_col_start = int(xx_start / EQUATOR_TILE_SIZE_TERRAIN_METERS)
+	effective_col_end = int(xx_end / EQUATOR_TILE_SIZE_TERRAIN_METERS)
+	effective_row_start = int(yy_start / EQUATOR_TILE_SIZE_TERRAIN_METERS)
+	effective_row_end = int(yy_end / EQUATOR_TILE_SIZE_TERRAIN_METERS)
 
 	if effective_col_start > effective_col_end:
 		tmp = effective_col_end
@@ -157,14 +164,15 @@ def main():
 
 	effective_cols_count = effective_col_end - effective_col_start + 1
 	effective_rows_count = effective_row_end - effective_row_start + 1
-	effective_terrain_width_m = effective_cols_count * TILE_SIZE_TERRAIN_METERS
-	effective_terrain_height_m = effective_rows_count * TILE_SIZE_TERRAIN_METERS
-	effective_paper_width_cm = effective_cols_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
-	effective_paper_height_cm = effective_rows_count * TILE_SIZE_TERRAIN_METERS / (SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	effective_terrain_width_m = effective_cols_count * REAL_TILE_SIZE_TERRAIN_METERS
+	effective_terrain_height_m = effective_rows_count * REAL_TILE_SIZE_TERRAIN_METERS
+	effective_paper_width_cm = effective_terrain_width_m / (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
+	effective_paper_height_cm = effective_terrain_height_m / (REAL_SCALE_TERRAIN_M_PER_PAPER_M / 100.0)
 
 	print("\nActually downloading:")
-	print(" {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_terrain_width_m, effective_terrain_width_m / TERRAIN_METERS_PER_DEGREE))
-	print(" {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_terrain_height_m, effective_terrain_height_m / TERRAIN_METERS_PER_DEGREE))
+	print(" {:>4} cols from {:>9} to {:<10} <-> paper width  {:>4.1f} cm <-> {:>5.0f} px <-> terrain width  {:>5.0f} m <-> {:>9.5f} lon degrees".format(effective_cols_count, effective_col_start, effective_col_end, effective_paper_width_cm, effective_cols_count * TILE_SIZE_PX,  effective_terrain_width_m, effective_terrain_width_m / terrain_meters_per_longitude_degree))
+	print(" {:>4} rows from {:>9} to {:<10} <-> paper height {:>4.1f} cm <-> {:>5.0f} px <-> terrain height {:>5.0f} m <-> {:>9.5f} lat degrees".format(effective_rows_count, effective_row_start, effective_row_end, effective_paper_height_cm, effective_rows_count * TILE_SIZE_PX, effective_terrain_height_m, effective_terrain_height_m / TERRAIN_METERS_PER_LATITUDE_DEGREE))
+	sys.stdout.flush() # Force printing console output now
 
 	# Download all tiles
 	for col in range (effective_col_start, effective_col_end + 1):
