@@ -15,6 +15,8 @@ import os
 import math
 from urllib.request import Request, urlopen
 from PIL import Image
+from PIL import ImageFont
+from PIL import ImageDraw
 #############################################################################################################################################
 # Secret data
 #############################################################################################################################################
@@ -32,7 +34,19 @@ TEMP_DIR = "temp"
 TERRAIN_METERS_PER_LATITUDE_DEGREE = 111000.0	# terrain meters / degree
 EARTH_EQUATORIAL_RADIUS_M = 6378137.0			# meters
 
-# 1:25000 Geoportail IGN map & WMTS constants
+## 1:25000 Geoportail IGN map & WMTS constants
+# Documentation: http://api.ign.fr/tech-docs-js/fr/developpeur/wmts.html
+# EPSG:3857 ("WGS 84 / Pseudo-Mercator")
+# The GetCapabilities request gives the following values for EPSG:3857 at zoom level 15:
+# <MinTileRow>10944</MinTileRow>
+# <MaxTileRow>21176</MaxTileRow>
+# <MinTileCol>163</MinTileCol><MaxTileCol>31695</MaxTileCol>
+# <ScaleDenominator>17061.8366707982724577</ScaleDenominator>
+# <TopLeftCorner>-20037508 20037508</TopLeftCorner>
+# <TileWidth>256</TileWidth>
+# <TileHeight>256</TileHeight>
+# <MatrixWidth>32768</MatrixWidth>
+# <MatrixHeight>32768</MatrixHeight></TileMatrix>
 MAP_NAME = "IGN"
 LAYER = "GEOGRAPHICALGRIDSYSTEMS.MAPS"
 ZOOM="15"
@@ -49,7 +63,8 @@ REAL_SCALE_TERRAIN_M_PER_PAPER_M = RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAP
 PAPER_METERS_PER_PIXEL = 0.00028																				# paper meters / pixel.
 EQUATOR_TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M	# =4.777314267823516 terrain meters / pixel at Equator
 EQUATOR_TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * EQUATOR_TERRAIN_METERS_PER_PIXEL								# =1223 terrain meters per tile at Equator
-REAL_TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * EQUATOR_TERRAIN_METERS_PER_PIXEL * math.cos(math.radians(LON_MIDDLE_OF_FRANCE))	# =834.66 terrain meters per tile in France
+REAL_TERRAIN_METERS_PER_PIXEL = EQUATOR_TERRAIN_METERS_PER_PIXEL * math.cos(math.radians(LON_MIDDLE_OF_FRANCE))	# =3.26 terrain meters per pixel in France
+REAL_TILE_SIZE_TERRAIN_METERS = EQUATOR_TILE_SIZE_TERRAIN_METERS * math.cos(math.radians(LON_MIDDLE_OF_FRANCE))	# =834.66 terrain meters per tile in France
 
 #############################################################################################################################################
 # Variables declaration
@@ -223,6 +238,31 @@ def main():
 		new_im.paste(im, (0,y_offset))
 		y_offset += im.size[1]
 
+	# Here, new_im contains the merged map
+
+	# Add scale on image
+	LINE_LENGTH = 1000 / REAL_TERRAIN_METERS_PER_PIXEL # Length of scale line for 1000m
+	MARGIN = 50
+	GRADUATION_HEIGTH = 20
+	LINE_WIDTH = 10
+	draw = ImageDraw.Draw(new_im)
+	font = ImageFont.truetype("Roboto-Black.ttf", 22)
+	# Scale line
+	draw.line([(MARGIN, new_im.size[1] - MARGIN), (MARGIN + LINE_LENGTH, new_im.size[1] - MARGIN)], fill=128, width=LINE_WIDTH)
+	# 0m graduation line
+	draw.line([(MARGIN + LINE_WIDTH//4, new_im.size[1] - MARGIN), (MARGIN + LINE_WIDTH//4, new_im.size[1] - MARGIN - GRADUATION_HEIGTH)], fill=128, width=LINE_WIDTH//2)
+	draw.text((MARGIN - 10, new_im.size[1] - MARGIN - 50), "0m",(0,0,0), font=font)
+	# 1000m graduation line
+	draw.line([(MARGIN + LINE_LENGTH - LINE_WIDTH//4, new_im.size[1] - MARGIN), (MARGIN + LINE_LENGTH - LINE_WIDTH//4, new_im.size[1] - MARGIN - GRADUATION_HEIGTH)], fill=128, width=LINE_WIDTH//2)
+	draw.text((MARGIN + LINE_LENGTH - 10, new_im.size[1] - MARGIN - 50), "1000m",(0,0,0), font=font)
+	# 250m graduation line
+	draw.line([(MARGIN + (1/4 * LINE_LENGTH), new_im.size[1] - MARGIN), (MARGIN + (1/4 * LINE_LENGTH), new_im.size[1] - MARGIN - GRADUATION_HEIGTH)], fill=128, width=LINE_WIDTH//2)
+	draw.text((MARGIN + (1/4 * LINE_LENGTH) - 10, new_im.size[1] - MARGIN - 50), "250m",(0,0,0), font=font)
+	# 500m graduation line
+	draw.line([(MARGIN + (2/4 * LINE_LENGTH), new_im.size[1] - MARGIN), (MARGIN + (2/4 * LINE_LENGTH), new_im.size[1] - MARGIN - GRADUATION_HEIGTH)], fill=128, width=LINE_WIDTH//2)
+	draw.text((MARGIN + (2/4 * LINE_LENGTH) - 10, new_im.size[1] - MARGIN - 50), "500m",(0,0,0), font=font)
+
+	# Save final image
 	new_im.save(map_file(MAP_NAME, ZOOM, effective_row_start, effective_row_end, effective_col_start, effective_col_end))
 
 	# Clean up cache
@@ -237,19 +277,7 @@ def main():
 # Methods
 #############################################################################################################################################
 
-### Computes (col, row) from (lon, lat) for ZOOM=15
-# Documentation: http://api.ign.fr/tech-docs-js/fr/developpeur/wmts.html
-# EPSG:3857 ("WGS 84 / Pseudo-Mercator")
-## The GetCapabilities request gives the following values for EPSG:3857 at zoom level 15:
-# <MinTileRow>10944</MinTileRow>
-# <MaxTileRow>21176</MaxTileRow>
-# <MinTileCol>163</MinTileCol><MaxTileCol>31695</MaxTileCol>
-# <ScaleDenominator>17061.8366707982724577</ScaleDenominator>
-# <TopLeftCorner>-20037508 20037508</TopLeftCorner>
-# <TileWidth>256</TileWidth>
-# <TileHeight>256</TileHeight>
-# <MatrixWidth>32768</MatrixWidth>
-# <MatrixHeight>32768</MatrixHeight></TileMatrix>
+# Computes (col, row) from (lon, lat) for ZOOM=15
 def lon_lat_2_xy(lon_deg, lat_deg):
 	lon_rad = math.radians(lon_deg)
 	lat_rad = math.radians(lat_deg)
