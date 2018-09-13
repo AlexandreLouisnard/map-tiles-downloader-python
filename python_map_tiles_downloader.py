@@ -65,12 +65,12 @@ REFERER = "Firefox"
 # Rendering scale denominator given by Geoportail with ZOOM=15
 RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M = 17061.8366707982724577 # terrain meters / paper meter
 # Approx longitude of the middle of France probably used by IGN to calculate its 1:25000 map rendering scale with 17061.83 = 25000 * cos(46.96)
-LON_MIDDLE_OF_FRANCE = 46.962767858006990591232517614197
-REAL_SCALE_TERRAIN_M_PER_PAPER_M = RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M / cos(radians(LON_MIDDLE_OF_FRANCE)) # =25000 terrain meters per paper meters (1:25000 map)
+LAT_MIDDLE_OF_FRANCE = 46.962767858006990591232517614197
+REAL_SCALE_TERRAIN_M_PER_PAPER_M = RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M / cos(radians(LAT_MIDDLE_OF_FRANCE)) # =25000 terrain meters per paper meters (1:25000 map)
 EQUATOR_TERRAIN_METERS_PER_PIXEL = PAPER_METERS_PER_PIXEL * RENDERING_SCALE_DENOMINATOR_TERRAIN_M_PER_PAPER_M	# =4.777314267823516 terrain meters / pixel at Equator
 EQUATOR_TILE_SIZE_TERRAIN_METERS = TILE_SIZE_PX * EQUATOR_TERRAIN_METERS_PER_PIXEL								# =1223 terrain meters per tile at Equator
-REAL_TERRAIN_METERS_PER_PIXEL = EQUATOR_TERRAIN_METERS_PER_PIXEL * cos(radians(LON_MIDDLE_OF_FRANCE))	# =3.26 terrain meters per pixel in France
-REAL_TILE_SIZE_TERRAIN_METERS = EQUATOR_TILE_SIZE_TERRAIN_METERS * cos(radians(LON_MIDDLE_OF_FRANCE))	# =834.66 terrain meters per tile in France
+REAL_TERRAIN_METERS_PER_PIXEL = EQUATOR_TERRAIN_METERS_PER_PIXEL * cos(radians(LAT_MIDDLE_OF_FRANCE))	# =3.26 terrain meters per pixel in France
+REAL_TILE_SIZE_TERRAIN_METERS = EQUATOR_TILE_SIZE_TERRAIN_METERS * cos(radians(LAT_MIDDLE_OF_FRANCE))	# =834.66 terrain meters per tile in France
 
 #############################################################################################################################################
 # Variables declaration
